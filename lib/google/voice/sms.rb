@@ -34,7 +34,7 @@ module Google
             html.css('div.gc-message-sms-row').each do |row|
               if row.css('span.gc-message-sms-from').inner_html.strip! =~ /Me:/
                 next
-              elsif row.css('span.gc-message-sms-time').inner_html =~ Regexp.new(txt_obj.display_start_time)
+              else
                 messages << {
                   :to => 'Me',
                   :from => row.css('span.gc-message-sms-from').inner_html.strip!.gsub!(':', ''),
@@ -51,7 +51,13 @@ module Google
               :messages => messages} 
           end
         end      
-        sms
+        sms.map{|conversation|
+          conversation[:messages].map{|message|
+            #TODO - change time to a proper date
+            message[:id] = Digest::SHA1.hexdigest(conversation[:id]+message[:from]+message[:time]+message[:text])
+            message
+          }
+        }.flatten
       end      
       
     end

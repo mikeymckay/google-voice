@@ -1,8 +1,6 @@
 # coding: UTF-8
 require File.join(File.expand_path(File.dirname(__FILE__)), 'base')
 
-GOOGLE_VOICE_SMS_TYPE = 11
-
 module Google
   module Voice      
     class Sms < Base    
@@ -20,46 +18,27 @@ module Google
       def recent
         @curb.url = "https://www.google.com/voice/inbox/recent/"        
         @curb.http_get
-        sms = []
         doc = Nokogiri::XML::Document.parse(@curb.body_str)
         data = doc.xpath('/response/json').first.text
         html = Nokogiri::HTML::DocumentFragment.parse(doc.to_html)
         json = JSON.parse(data)        
         # Format for messages is [id, {attributes}]
-        json['messages'].each do |message|
-          if message[1]['type'].to_i != GOOGLE_VOICE_SMS_TYPE
-            next
-          else
-            messages = []            
-            html.css('div.gc-message-sms-row').each do |row|
-              if row.css('span.gc-message-sms-from').inner_html.strip! =~ /Me:/
-                next
-              else
-                messages << {
-                  :to => 'Me',
-                  :from => row.css('span.gc-message-sms-from').inner_html.strip!.gsub!(':', ''),
-                  :text => row.css('span.gc-message-sms-text').inner_html,
-                  :time => row.css('span.gc-message-sms-time').inner_html
-                }
-              end
-            end
-            # Google is using milliseconds since epoch for time
-            sms << {
-              :id => message[0],
-              :phone_number => message[1]['phoneNumber'],
-              :start_time => Time.at(message[1]['startTime'].to_i / 1000),
-              :messages => messages} 
+        json['messages'].map do |conversation|
+          next unless conversation[1]['labels'].include? "sms"
+          html.css("##{conversation[0]} div.gc-message-sms-row").map do |row|
+            next if row.css('span.gc-message-sms-from').inner_html.strip! =~ /Me:/
+            text = row.css('span.gc-message-sms-text').inner_html
+            time = row.css('span.gc-message-sms-time').inner_html
+            from = conversation[1]['phoneNumber']
+            {
+              :id => Digest::SHA1.hexdigest(conversation[0]+text+from),
+              :text => text,
+              :time => time,
+              :from => from
+            }
           end
-        end      
-        sms.map{|conversation|
-          conversation[:messages].map{|message|
-            #TODO - change time to a proper date
-            message[:id] = Digest::SHA1.hexdigest(conversation[:id]+message[:from]+message[:time]+message[:text])
-            message
-          }
-        }.flatten
+        end.flatten.compact
       end      
-      
     end
   end
 end
